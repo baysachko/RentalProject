@@ -19,7 +19,7 @@ namespace WinFormsApp1
             // Add new button event handlers
             delete.Click += Delete_Click;
             back.Click += Back_Click;
-            clear.Click += Clear_Click;
+          
 
         }
 
@@ -255,13 +255,9 @@ namespace WinFormsApp1
             {
                 using (SqlConnection conn = DbHelper.GetConnection())
                 {
-                    string query = @"SELECT ReservationID, ReservationDate, StartDate, EndDate, 
-                                     Status, ResidentID, RoomID 
-                                     FROM Reservation 
-                                     ORDER BY ReservationID DESC";
-
-                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    using (SqlCommand cmd = new SqlCommand("sp_GetAllReservations", conn))
                     {
+                        cmd.CommandType = CommandType.StoredProcedure;
                         DataTable dt = new DataTable();
                         conn.Open();
                         using (SqlDataAdapter adapter = new SqlDataAdapter(cmd))
@@ -306,26 +302,18 @@ namespace WinFormsApp1
             {
                 if (!ValidateInput()) return;
 
-                string query = @"INSERT INTO Reservation 
-                            (ReservationDate, StartDate, EndDate, Status, ResidentID, RoomID)
-                            VALUES
-                            (@ReservationDate, @StartDate, @EndDate, @Status, @ResidentID, @RoomID)";
-
-                SqlParameter[] parameters = new SqlParameter[]
-                {
-                    new SqlParameter("@ReservationDate", reservationdate.Value.Date),
-                    new SqlParameter("@StartDate", reservationstartdate.Value.Date),
-                    new SqlParameter("@EndDate", reservationenddate.Value.Date),
-                    new SqlParameter("@Status", reservationstatus.SelectedItem.ToString()),
-                    new SqlParameter("@ResidentID", int.Parse(residentid.Text)),
-                    new SqlParameter("@RoomID", int.Parse(roomid.Text))
-                };
-
                 using (SqlConnection conn = DbHelper.GetConnection())
                 {
-                    using (SqlCommand cmd = new SqlCommand(query, conn))
+                    using (SqlCommand cmd = new SqlCommand("sp_InsertReservation", conn))
                     {
-                        cmd.Parameters.AddRange(parameters);
+                        cmd.CommandType = CommandType.StoredProcedure;
+                        cmd.Parameters.AddWithValue("@ReservationDate", reservationdate.Value.Date);
+                        cmd.Parameters.AddWithValue("@StartDate", reservationstartdate.Value.Date);
+                        cmd.Parameters.AddWithValue("@EndDate", reservationenddate.Value.Date);
+                        cmd.Parameters.AddWithValue("@Status", reservationstatus.SelectedItem.ToString());
+                        cmd.Parameters.AddWithValue("@ResidentID", int.Parse(residentid.Text));
+                        cmd.Parameters.AddWithValue("@RoomID", int.Parse(roomid.Text));
+
                         conn.Open();
                         cmd.ExecuteNonQuery();
                     }
@@ -345,36 +333,16 @@ namespace WinFormsApp1
 
         private void Update_Click(object sender, EventArgs e)
         {
+            if (string.IsNullOrEmpty(reservationid.Text))
+            {
+                MessageBox.Show("Please select a reservation to update.", "Validation Error");
+                return;
+            }
+
+            if (!ValidateInput()) return;
+
             try
             {
-                if (string.IsNullOrEmpty(reservationid.Text))
-                {
-                    MessageBox.Show("Please select a reservation to update.", "Validation Error");
-                    return;
-                }
-
-                if (!ValidateInput()) return;
-
-                string query = @"UPDATE Reservation 
-                            SET ReservationDate = @ReservationDate,
-                                StartDate = @StartDate,
-                                EndDate = @EndDate,
-                                Status = @Status,
-                                ResidentID = @ResidentID,
-                                RoomID = @RoomID
-                            WHERE ReservationID = @ReservationID";
-
-                SqlParameter[] parameters = new SqlParameter[]
-                {
-                    new SqlParameter("@ReservationID", int.Parse(reservationid.Text)),
-                    new SqlParameter("@ReservationDate", reservationdate.Value.Date),
-                    new SqlParameter("@StartDate", reservationstartdate.Value.Date),
-                    new SqlParameter("@EndDate", reservationenddate.Value.Date),
-                    new SqlParameter("@Status", reservationstatus.SelectedItem.ToString()),
-                    new SqlParameter("@ResidentID", int.Parse(residentid.Text)),
-                    new SqlParameter("@RoomID", int.Parse(roomid.Text))
-                };
-
                 DialogResult result = MessageBox.Show(
                     "Are you sure you want to update this reservation?",
                     "Confirm Update",
@@ -385,38 +353,50 @@ namespace WinFormsApp1
                 {
                     using (SqlConnection conn = DbHelper.GetConnection())
                     {
-                        using (SqlCommand cmd = new SqlCommand(query, conn))
+                        using (SqlCommand cmd = new SqlCommand("sp_UpdateReservation", conn))
                         {
-                            cmd.Parameters.AddRange(parameters);
+                            cmd.CommandType = CommandType.StoredProcedure;
+
+                            // Add parameters
+                            cmd.Parameters.AddWithValue("@ReservationID", int.Parse(reservationid.Text));
+                            cmd.Parameters.AddWithValue("@ReservationDate", reservationdate.Value.Date);
+                            cmd.Parameters.AddWithValue("@StartDate", reservationstartdate.Value.Date);
+                            cmd.Parameters.AddWithValue("@EndDate", reservationenddate.Value.Date);
+                            cmd.Parameters.AddWithValue("@Status", reservationstatus.SelectedItem.ToString());
+                            cmd.Parameters.AddWithValue("@ResidentID", int.Parse(residentid.Text));
+                            cmd.Parameters.AddWithValue("@RoomID", int.Parse(roomid.Text));
+
                             conn.Open();
                             cmd.ExecuteNonQuery();
+
+                            MessageBox.Show("Reservation updated successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadData();
+                            ClearFields();
                         }
                     }
-
-                    MessageBox.Show("Reservation updated successfully!", "Success",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    LoadData();
-                    ClearFields();
                 }
+            }
+            catch (SqlException ex)
+            {
+                // Handle specific SQL errors thrown by the stored procedure
+                if (ex.Number == 50001)
+                    MessageBox.Show("Reservation not found.", "Error");
+                else if (ex.Number == 50002)
+                    MessageBox.Show("Resident not found.", "Error");
+                else if (ex.Number == 50003)
+                    MessageBox.Show("Room not found.", "Error");
+                else if (ex.Number == 50004)
+                    MessageBox.Show("Start date cannot be after end date.", "Error");
+                else if (ex.Number == 50005)
+                    MessageBox.Show("Room is already reserved for this period.", "Error");
+                else
+                    MessageBox.Show($"Database error: {ex.Message}", "Error");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error updating data: {ex.Message}", "Error",
+                MessageBox.Show($"Error updating reservation: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-            }
-        }
-
-        private void Clear_Click(object sender, EventArgs e)
-        {
-            DialogResult result = MessageBox.Show(
-                "Are you sure you want to clear all fields?",
-                "Confirm Clear",
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (result == DialogResult.Yes)
-            {
-                ClearFields();
             }
         }
 
@@ -537,10 +517,9 @@ namespace WinFormsApp1
                 {
                     using (SqlConnection conn = DbHelper.GetConnection())
                     {
-                        string query = "DELETE FROM Reservation WHERE ReservationID = @ReservationID";
-
-                        using (SqlCommand cmd = new SqlCommand(query, conn))
+                        using (SqlCommand cmd = new SqlCommand("sp_DeleteReservation", conn))
                         {
+                            cmd.CommandType = CommandType.StoredProcedure;
                             cmd.Parameters.AddWithValue("@ReservationID", int.Parse(reservationid.Text));
 
                             conn.Open();

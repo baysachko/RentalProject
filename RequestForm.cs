@@ -36,13 +36,6 @@ namespace WinFormsApp1
             // Load the initial data
             LoadRequests();
 
-            // Initialize status ComboBox
-            status.Items.AddRange(new string[] { "Pending", "Confirmed", "Completed", "Cancelled" });
-            status.SelectedIndex = 0;
-
-            // Set up DataGridView
-            LoadRequests();
-
             // Add event handlers
             residentid.KeyDown += ResidentID_KeyDown;
             serviceid.KeyDown += ServiceID_KeyDown;
@@ -58,25 +51,25 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = "SELECT * FROM Request ORDER BY RequestID DESC";
-                    using (var adapter = new SqlDataAdapter(query, connection))
+                    using (var command = new SqlCommand("sp_GetAllRequests", connection))
                     {
+                        command.CommandType = CommandType.StoredProcedure;
+                        var adapter = new SqlDataAdapter(command);
                         DataTable dt = new DataTable();
                         adapter.Fill(dt);
                         dataGridView1.DataSource = dt;
                     }
                 }
+                if (dataGridView1.Columns.Count > 0)
+                {
+                    FormatDataGridView();
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error loading requests: {ex.Message}");
+                MessageBox.Show($"Error loading requests: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-            if (dataGridView1.Columns.Count > 0)
-            {
-                FormatDataGridView();
-            }
-
         }
 
         private void ResidentID_KeyDown(object sender, KeyEventArgs e)
@@ -87,27 +80,37 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-                        string query = "SELECT ResidentName FROM Resident WHERE ResidentID = @ResidentID";
-                        using (var command = new SqlCommand(query, connection))
+                        using (var command = new SqlCommand("sp_GetResidentNameById", connection))
                         {
+                            command.CommandType = CommandType.StoredProcedure;
                             command.Parameters.AddWithValue("@ResidentID", residentid.Text);
-                            var result = command.ExecuteScalar();
-                            if (result != null)
+
+                            connection.Open();
+                            try
                             {
-                                residentname.Text = result.ToString();
+                                var result = command.ExecuteScalar();
+                                if (result != null)
+                                {
+                                    residentname.Text = result.ToString();
+                                }
                             }
-                            else
+                            catch (SqlException ex)
                             {
-                                MessageBox.Show("Resident not found!");
-                                residentname.Text = string.Empty;
+                                if (ex.Number == 50001)
+                                {
+                                    MessageBox.Show("Resident not found!", "Error",
+                                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                    residentname.Text = string.Empty;
+                                }
+                                else throw;
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error finding resident: {ex.Message}");
+                    MessageBox.Show($"Error finding resident: {ex.Message}", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -120,27 +123,37 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-                        string query = "SELECT ServiceName FROM Service WHERE ServiceID = @ServiceID";
-                        using (var command = new SqlCommand(query, connection))
+                        using (var command = new SqlCommand("sp_GetServiceNameById", connection))
                         {
+                            command.CommandType = CommandType.StoredProcedure;
                             command.Parameters.AddWithValue("@ServiceID", serviceid.Text);
-                            var result = command.ExecuteScalar();
-                            if (result != null)
+
+                            connection.Open();
+                            try
                             {
-                                servicename.Text = result.ToString();
+                                var result = command.ExecuteScalar();
+                                if (result != null)
+                                {
+                                    servicename.Text = result.ToString();
+                                }
                             }
-                            else
+                            catch (SqlException ex)
                             {
-                                MessageBox.Show("Service not found!");
-                                servicename.Text = string.Empty;
+                                if (ex.Number == 50002)
+                                {
+                                    MessageBox.Show("Service not found!", "Error",
+                                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                    servicename.Text = string.Empty;
+                                }
+                                else throw;
                             }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Error finding service: {ex.Message}");
+                    MessageBox.Show($"Error finding service: {ex.Message}", "Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -153,43 +166,60 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"INSERT INTO Request 
-                           (RequestDate, Description, Status, ResidentID, ServiceID) 
-                           VALUES 
-                           (@RequestDate, @Description, @Status, @ResidentID, @ServiceID)";
-
-                    using (var command = new SqlCommand(query, connection))
+                    using (var command = new SqlCommand("sp_InsertRequest", connection))
                     {
+                        command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@RequestDate", requestdate.Value);
                         command.Parameters.AddWithValue("@Description", description.Text);
                         command.Parameters.AddWithValue("@Status", status.Text);
                         command.Parameters.AddWithValue("@ResidentID", Convert.ToInt32(residentid.Text));
                         command.Parameters.AddWithValue("@ServiceID", Convert.ToInt32(serviceid.Text));
 
-                        command.ExecuteNonQuery();
-                        MessageBox.Show("Request inserted successfully!");
-                        LoadRequests();
-                        ClearForm();
+                        connection.Open();
+                        try
+                        {
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Request inserted successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadRequests();
+                            ClearForm();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
+                            {
+                                case 50001:
+                                    MessageBox.Show("Resident not found!", "Error");
+                                    break;
+                                case 50002:
+                                    MessageBox.Show("Service not found!", "Error");
+                                    break;
+                                case 50003:
+                                    MessageBox.Show("Invalid status value!", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
+                        }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error inserting request: {ex.Message}");
+                MessageBox.Show($"Error inserting request: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
+
         private void update_Click(object sender, EventArgs e)
         {
-            if (!ValidateInput())
-            {
-                return;
-            }
+            if (!ValidateInput()) return;
 
             if (string.IsNullOrEmpty(requestid.Text))
             {
-                MessageBox.Show("Please select a request to update!");
+                MessageBox.Show("Please select a request to update!", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
@@ -197,17 +227,9 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"UPDATE Request 
-                           SET RequestDate = @RequestDate,
-                               Description = @Description,
-                               Status = @Status,
-                               ResidentID = @ResidentID,
-                               ServiceID = @ServiceID
-                           WHERE RequestID = @RequestID";
-
-                    using (var command = new SqlCommand(query, connection))
+                    using (var command = new SqlCommand("sp_UpdateRequest", connection))
                     {
+                        command.CommandType = CommandType.StoredProcedure;
                         command.Parameters.AddWithValue("@RequestID", Convert.ToInt32(requestid.Text));
                         command.Parameters.AddWithValue("@RequestDate", requestdate.Value);
                         command.Parameters.AddWithValue("@Description", description.Text);
@@ -215,23 +237,42 @@ namespace WinFormsApp1
                         command.Parameters.AddWithValue("@ResidentID", Convert.ToInt32(residentid.Text));
                         command.Parameters.AddWithValue("@ServiceID", Convert.ToInt32(serviceid.Text));
 
-                        int rowsAffected = command.ExecuteNonQuery();
-                        if (rowsAffected > 0)
+                        connection.Open();
+                        try
                         {
-                            MessageBox.Show("Request updated successfully!");
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Request updated successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
                             LoadRequests();
                             ClearForm();
                         }
-                        else
+                        catch (SqlException ex)
                         {
-                            MessageBox.Show("No request was updated. Please check if the request exists.");
+                            switch (ex.Number)
+                            {
+                                case 50001:
+                                    MessageBox.Show("Resident not found!", "Error");
+                                    break;
+                                case 50002:
+                                    MessageBox.Show("Service not found!", "Error");
+                                    break;
+                                case 50003:
+                                    MessageBox.Show("Invalid status value!", "Error");
+                                    break;
+                                case 50004:
+                                    MessageBox.Show("Request not found!", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error updating request: {ex.Message}");
+                MessageBox.Show($"Error updating request: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -283,24 +324,28 @@ namespace WinFormsApp1
         {
             if (string.IsNullOrWhiteSpace(description.Text))
             {
-                MessageBox.Show("Please enter a description.");
+                MessageBox.Show("Please enter a description.", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
 
             if (string.IsNullOrWhiteSpace(residentid.Text) || string.IsNullOrWhiteSpace(residentname.Text))
             {
-                MessageBox.Show("Please enter a valid Resident ID.");
+                MessageBox.Show("Please enter a valid Resident ID.", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
 
             if (string.IsNullOrWhiteSpace(serviceid.Text) || string.IsNullOrWhiteSpace(servicename.Text))
             {
-                MessageBox.Show("Please enter a valid Service ID.");
+                MessageBox.Show("Please enter a valid Service ID.", "Validation Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
 
             return true;
         }
+
 
         private void searchbox_TextChanged(object sender, EventArgs e)
         {
@@ -308,27 +353,20 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"SELECT r.RequestID, r.RequestDate, r.Description, r.Status, 
-                   r.ResidentID, r.ServiceID, res.ResidentName, s.ServiceName
-                   FROM Request r
-                   INNER JOIN Resident res ON r.ResidentID = res.ResidentID
-                   INNER JOIN Service s ON r.ServiceID = s.ServiceID
-                   WHERE res.ResidentName LIKE @SearchTerm + '%'
-                   OR r.Description LIKE @SearchTerm + '%'
-                   OR r.Status LIKE @SearchTerm + '%'
-                   OR s.ServiceName LIKE @SearchTerm + '%'";
-
-                    var command = new SqlCommand(query, connection);
-                    command.Parameters.AddWithValue("@SearchTerm", searchbox.Text);
-                    var adapter = new SqlDataAdapter(command);
-                    var dt = new DataTable();
-                    adapter.Fill(dt);
-                    dataGridView1.DataSource = dt;
-
-                    if (dataGridView1.Columns.Count > 0)
+                    using (var command = new SqlCommand("sp_SearchRequests", connection))
                     {
-                        FormatDataGridView();
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@SearchTerm", searchbox.Text.Trim());
+
+                        var adapter = new SqlDataAdapter(command);
+                        var dt = new DataTable();
+                        adapter.Fill(dt);
+                        dataGridView1.DataSource = dt;
+
+                        if (dataGridView1.Columns.Count > 0)
+                        {
+                            FormatDataGridView();
+                        }
                     }
                 }
             }
@@ -375,55 +413,61 @@ namespace WinFormsApp1
 
         }
         private void delete_Click(object sender, EventArgs e)
+    {
+        if (string.IsNullOrEmpty(requestid.Text))
         {
-            // Check if a record is selected
-            if (string.IsNullOrEmpty(requestid.Text))
-            {
-                MessageBox.Show("Please select a request to delete!", "Warning",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            MessageBox.Show("Please select a request to delete!", "Warning",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
 
-            // Confirm deletion
-            var result = MessageBox.Show("Are you sure you want to delete this request?",
-                "Confirm Deletion", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        var result = MessageBox.Show("Are you sure you want to delete this request?",
+            "Confirm Deletion", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
-            if (result == DialogResult.Yes)
+        if (result == DialogResult.Yes)
+        {
+            try
             {
-                try
+                using (var connection = DbHelper.GetConnection())
                 {
-                    using (var connection = DbHelper.GetConnection())
+                    using (var command = new SqlCommand("sp_DeleteRequest", connection))
                     {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@RequestID", Convert.ToInt32(requestid.Text));
+
                         connection.Open();
-                        string query = "DELETE FROM Request WHERE RequestID = @RequestID";
-
-                        using (var command = new SqlCommand(query, connection))
+                        try
                         {
-                            command.Parameters.AddWithValue("@RequestID", Convert.ToInt32(requestid.Text));
-
-                            int rowsAffected = command.ExecuteNonQuery();
-                            if (rowsAffected > 0)
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Request deleted successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadRequests();
+                            ClearForm();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
                             {
-                                MessageBox.Show("Request deleted successfully!", "Success",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                                LoadRequests(); // Refresh the grid
-                                ClearForm(); // Clear the form fields
-                            }
-                            else
-                            {
-                                MessageBox.Show("No request was deleted. Please check if the request exists.",
-                                    "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                case 50004:
+                                    MessageBox.Show("Request not found!", "Error");
+                                    break;
+                                case 50005:
+                                    MessageBox.Show("Cannot delete completed requests!", "Error");
+                                    break;
+                                default:
+                                    throw;
                             }
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Error deleting request: {ex.Message}", "Error",
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error deleting request: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+    }
         private void back_Click(object sender, EventArgs e)
         {
             // Close the current form

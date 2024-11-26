@@ -41,70 +41,30 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    // Configure DataGridView properties
-                    dataGridView1.AllowUserToAddRows = false;
-                    dataGridView1.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-                    dataGridView1.MultiSelect = false;  // Allow only one row selection
-                    dataGridView1.ReadOnly = true;
-                    dataGridView1.AutoGenerateColumns = true;
-                    connection.Open();
-                    string query = @"SELECT r.RentID, r.StartDate, r.EndDate, r.RentAmount, 
-                           r.ResidentID, r.RoomID, res.ResidentName, rm.RoomNumber
-                           FROM Rent r
-                           INNER JOIN Resident res ON r.ResidentID = res.ResidentID
-                           INNER JOIN Room rm ON r.RoomID = rm.RoomID";
-
-                    var adapter = new SqlDataAdapter(query, connection);
-                    var dt = new DataTable();
-                    adapter.Fill(dt);
-
-                    // Clear existing columns and data
-                    dataGridView1.DataSource = null;
-                    dataGridView1.Columns.Clear();
-                    dataGridView1.AutoGenerateColumns = true;
-
-                    // Set the data source
-                    dataGridView1.DataSource = dt;
-
-                    // Configure DataGridView properties
-                    dataGridView1.AllowUserToAddRows = false;
-                    dataGridView1.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
-                    dataGridView1.ReadOnly = true;
-                    dataGridView1.RowHeadersVisible = false;
-
-                    // Set individual column properties
-                    if (dataGridView1.Columns.Count > 0)
+                    using (var command = new SqlCommand("sp_GetAllRents", connection))
                     {
-                        dataGridView1.Columns["RentID"].Width = 70;
-                        dataGridView1.Columns["StartDate"].Width = 100;
-                        dataGridView1.Columns["EndDate"].Width = 100;
-                        dataGridView1.Columns["RentAmount"].Width = 100;
-                        dataGridView1.Columns["RoomID"].Width = 70;
-                        dataGridView1.Columns["ResidentID"].Width = 80;
-                        dataGridView1.Columns["ResidentName"].Width = 120;
-                        dataGridView1.Columns["RoomNumber"].Width = 100;
+                        command.CommandType = CommandType.StoredProcedure;
 
-                        // Format columns
-                        dataGridView1.Columns["StartDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
-                        dataGridView1.Columns["EndDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
-                        dataGridView1.Columns["RentAmount"].DefaultCellStyle.Format = "C2";
+                        var adapter = new SqlDataAdapter(command);
+                        var dt = new DataTable();
+                        adapter.Fill(dt);
 
-                        // Set headers
-                        dataGridView1.Columns["RentID"].HeaderText = "Rent ID";
-                        dataGridView1.Columns["StartDate"].HeaderText = "Start Date";
-                        dataGridView1.Columns["EndDate"].HeaderText = "End Date";
-                        dataGridView1.Columns["RentAmount"].HeaderText = "Rent Amount";
-                        dataGridView1.Columns["RoomID"].HeaderText = "Room ID";
-                        dataGridView1.Columns["ResidentID"].HeaderText = "Resident ID";
-                        dataGridView1.Columns["ResidentName"].HeaderText = "Resident Name";
-                        dataGridView1.Columns["RoomNumber"].HeaderText = "Room Number";
+                        // Configure DataGridView properties
+                        dataGridView1.AllowUserToAddRows = false;
+                        dataGridView1.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
+                        dataGridView1.MultiSelect = false;
+                        dataGridView1.ReadOnly = true;
+                        dataGridView1.AutoGenerateColumns = true;
+                        dataGridView1.RowHeadersVisible = false;
+
+                        // Set the data source
+                        dataGridView1.DataSource = dt;
+
+                        if (dataGridView1.Columns.Count > 0)
+                        {
+                            FormatDataGridView();
+                        }
                     }
-
-                    // Style the grid
-                    dataGridView1.AlternatingRowsDefaultCellStyle.BackColor = Color.LightGray;
-                    dataGridView1.EnableHeadersVisualStyles = false;
-                    dataGridView1.ColumnHeadersDefaultCellStyle.BackColor = Color.LightBlue;
-                    dataGridView1.ColumnHeadersDefaultCellStyle.Font = new Font(dataGridView1.Font, FontStyle.Bold);
                 }
             }
             catch (Exception ex)
@@ -121,38 +81,59 @@ namespace WinFormsApp1
             {
                 if (!ValidateInsertInput()) return;
 
+                decimal rentAmount;
+                if (!decimal.TryParse(rentamount.Text, out rentAmount))
+                {
+                    MessageBox.Show("Please enter a valid rent amount.", "Validation Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"INSERT INTO Rent (StartDate, EndDate, RentAmount, ResidentID, RoomID)
-                                   VALUES (@StartDate, @EndDate, @RentAmount, @ResidentID, @RoomID)";
-
-                    var command = new SqlCommand(query, connection);
-
-                    // Add parameters
-                    command.Parameters.Add("@StartDate", SqlDbType.Date).Value = startdate.Value.Date;
-                    command.Parameters.Add("@EndDate", SqlDbType.Date).Value = enddate.Value.Date;
-                    command.Parameters.Add("@RentAmount", SqlDbType.Decimal).Value =
-                        decimal.Parse(rentamount.Text);
-                    command.Parameters.Add("@ResidentID", SqlDbType.Int).Value =
-                        int.Parse(residentid.Text);
-                    command.Parameters.Add("@RoomID", SqlDbType.Int).Value =
-                        int.Parse(roomid.Text);
-
-                    int result = command.ExecuteNonQuery();
-
-                    if (result > 0)
+                    using (var command = new SqlCommand("sp_InsertRent", connection))
                     {
-                        MessageBox.Show("Rent record inserted successfully!");
-                        LoadRentData();
-                        ClearFields();
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@StartDate", startdate.Value.Date);
+                        command.Parameters.AddWithValue("@EndDate", enddate.Value.Date);
+                        command.Parameters.AddWithValue("@RentAmount", rentAmount);
+                        command.Parameters.AddWithValue("@ResidentID", int.Parse(residentid.Text));
+                        command.Parameters.AddWithValue("@RoomID", int.Parse(roomid.Text));
+
+                        try
+                        {
+                            connection.Open();
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Rent record inserted successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadRentData();
+                            ClearFields();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
+                            {
+                                case 50001:
+                                    MessageBox.Show("Resident not found.", "Error");
+                                    break;
+                                case 50002:
+                                    MessageBox.Show("Room not found.", "Error");
+                                    break;
+                                case 50003:
+                                    MessageBox.Show("End date cannot be earlier than start date.", "Error");
+                                    break;
+                                case 50004:
+                                    MessageBox.Show("Rent amount must be greater than zero.", "Error");
+                                    break;
+                                case 50005:
+                                    MessageBox.Show("Room is already rented during this period.", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
+                        }
                     }
                 }
-            }
-            catch (FormatException)
-            {
-                MessageBox.Show("Please ensure all numeric fields contain valid numbers.",
-                    "Validation Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
             catch (Exception ex)
             {
@@ -160,44 +141,59 @@ namespace WinFormsApp1
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
         private void update_Click(object sender, EventArgs e)
         {
             try
             {
                 if (!ValidateInput()) return;
 
+                decimal rentAmount;
+                if (!decimal.TryParse(rentamount.Text, out rentAmount))
+                {
+                    MessageBox.Show("Please enter a valid rent amount.", "Validation Error",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-
-                    // Get RentID from selected row
-                    int rentId = Convert.ToInt32(dataGridView1.CurrentRow.Cells["RentID"].Value);
-
-                    string query = @"UPDATE Rent 
-                 SET StartDate = @StartDate, 
-                     EndDate = @EndDate,
-                     RentAmount = @RentAmount 
-                 WHERE RentID = @RentID";
-
-                    var command = new SqlCommand(query, connection);
-
-                    // Add parameters with correct parameter names
-                    command.Parameters.Add("@RentID", SqlDbType.Int).Value = rentId;
-                    command.Parameters.Add("@StartDate", SqlDbType.Date).Value = startdate.Value.Date;
-                    command.Parameters.Add("@EndDate", SqlDbType.Date).Value = enddate.Value.Date;
-
-                    int result = command.ExecuteNonQuery();
-
-                    if (result > 0)
+                    using (var command = new SqlCommand("sp_UpdateRent", connection))
                     {
-                        MessageBox.Show("Update successful!");
-                        LoadRentData();
-                        ClearFields();
-                    }
-                    else
-                    {
-                        MessageBox.Show("No records were updated. Please check if the RentID exists.");
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@RentID", int.Parse(rentid.Text));
+                        command.Parameters.AddWithValue("@StartDate", startdate.Value.Date);
+                        command.Parameters.AddWithValue("@EndDate", enddate.Value.Date);
+                        command.Parameters.AddWithValue("@RentAmount", rentAmount);
+
+                        try
+                        {
+                            connection.Open();
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Rent record updated successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            LoadRentData();
+                            ClearFields();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
+                            {
+                                case 50003:
+                                    MessageBox.Show("End date cannot be earlier than start date.", "Error");
+                                    break;
+                                case 50004:
+                                    MessageBox.Show("Rent amount must be greater than zero.", "Error");
+                                    break;
+                                case 50005:
+                                    MessageBox.Show("Room is already rented during this period.", "Error");
+                                    break;
+                                case 50006:
+                                    MessageBox.Show("Rent record not found.", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
+                        }
                     }
                 }
             }
@@ -207,32 +203,24 @@ namespace WinFormsApp1
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
         private void clear_Click(object sender, EventArgs e)
         {
             try
             {
-                // Clear all input fields
-                if (rentid != null) rentid.Text = string.Empty;
-                if (rentamount != null) rentamount.Text = string.Empty;
-                if (roomid != null) roomid.Text = string.Empty;
-                if (residentname != null) residentname.Text = string.Empty;
-                if (roomnum != null) roomnum.Text = string.Empty;
-                if (residentid != null) residentid.Text = string.Empty;
-                if (searchbox != null) searchbox.Text = string.Empty;
+                DialogResult result = MessageBox.Show(
+                    "Are you sure you want to clear all fields?",
+                    "Confirm Clear",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
 
-                // Reset date pickers to current date
-                if (startdate != null) startdate.Value = DateTime.Now;
-                if (enddate != null) enddate.Value = DateTime.Now;
-
-                // Clear any selected rows in the DataGridView
-                if (dataGridView1 != null && dataGridView1.CurrentRow != null)
+                if (result == DialogResult.Yes)
                 {
-                    dataGridView1.ClearSelection();
+                    ClearFields();
+                    if (dataGridView1.CurrentRow != null)
+                    {
+                        dataGridView1.ClearSelection();
+                    }
                 }
-
-                // Optional: Refresh the DataGridView
-                LoadRentData();
             }
             catch (Exception ex)
             {
@@ -254,25 +242,15 @@ namespace WinFormsApp1
 
         private void back_Click(object sender, EventArgs e)
         {
-            try
-            {
-                // Optionally prompt user to confirm if there are unsaved changes
-                DialogResult result = MessageBox.Show(
-                    "Are you sure you want to go back? Any unsaved changes will be lost.",
-                    "Confirm",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Question);
+            DialogResult result = MessageBox.Show(
+                "Are you sure you want to go back? Any unsaved changes will be lost.",
+                "Confirm",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
 
-                if (result == DialogResult.Yes)
-                {
-                    // Close the current form
-                    this.Close();
-                }
-            }
-            catch (Exception ex)
+            if (result == DialogResult.Yes)
             {
-                MessageBox.Show($"Error closing form: {ex.Message}", "Error",
-                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                this.Close();
             }
         }
 
@@ -353,7 +331,6 @@ namespace WinFormsApp1
 
             return true;
         }
-
         private void residentid_TextChanged(object sender, EventArgs e)
         {
             if (!string.IsNullOrWhiteSpace(residentid.Text) && int.TryParse(residentid.Text, out int id))
@@ -362,19 +339,32 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-                        string query = "SELECT ResidentName FROM Resident WHERE ResidentID = @ResidentID";
-                        var command = new SqlCommand(query, connection);
-                        command.Parameters.AddWithValue("@ResidentID", id);
+                        using (var command = new SqlCommand("sp_GetResidentNameById", connection))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@ResidentID", id);
 
-                        var result = command.ExecuteScalar();
-                        if (result != null)
-                        {
-                            residentname.Text = result.ToString();
-                        }
-                        else
-                        {
-                            residentname.Clear();
+                            try
+                            {
+                                connection.Open();
+                                var result = command.ExecuteScalar();
+                                if (result != null)
+                                {
+                                    residentname.Text = result.ToString();
+                                }
+                                else
+                                {
+                                    residentname.Clear();
+                                }
+                            }
+                            catch (SqlException ex)
+                            {
+                                if (ex.Number == 50001)
+                                {
+                                    residentname.Clear();
+                                }
+                                else throw;
+                            }
                         }
                     }
                 }
@@ -388,7 +378,6 @@ namespace WinFormsApp1
                 residentname.Clear();
             }
         }
-
         private void roomid_TextChanged(object sender, EventArgs e)
         {
             if (!string.IsNullOrWhiteSpace(roomid.Text) && int.TryParse(roomid.Text, out int id))
@@ -397,19 +386,32 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-                        string query = "SELECT RoomNumber FROM Room WHERE RoomID = @RoomID";
-                        var command = new SqlCommand(query, connection);
-                        command.Parameters.AddWithValue("@RoomID", id);
+                        using (var command = new SqlCommand("sp_GetRoomNumberById", connection))
+                        {
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@RoomID", id);
 
-                        var result = command.ExecuteScalar();
-                        if (result != null)
-                        {
-                            roomnum.Text = result.ToString();
-                        }
-                        else
-                        {
-                            roomnum.Clear();
+                            try
+                            {
+                                connection.Open();
+                                var result = command.ExecuteScalar();
+                                if (result != null)
+                                {
+                                    roomnum.Text = result.ToString();
+                                }
+                                else
+                                {
+                                    roomnum.Clear();
+                                }
+                            }
+                            catch (SqlException ex)
+                            {
+                                if (ex.Number == 50002)
+                                {
+                                    roomnum.Clear();
+                                }
+                                else throw;
+                            }
                         }
                     }
                 }
@@ -423,8 +425,6 @@ namespace WinFormsApp1
                 roomnum.Clear();
             }
         }
-
-
         private void dataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
         {
             try
@@ -433,15 +433,24 @@ namespace WinFormsApp1
                 {
                     DataGridViewRow row = dataGridView1.Rows[e.RowIndex];
 
-                    // Pre-populate all fields
-                    rentid.Text = row.Cells["RentID"].Value.ToString();  // Add this line
-                    startdate.Value = Convert.ToDateTime(row.Cells["StartDate"].Value);
-                    enddate.Value = Convert.ToDateTime(row.Cells["EndDate"].Value);
-                    rentamount.Text = row.Cells["RentAmount"].Value.ToString();
-                    roomid.Text = row.Cells["RoomID"].Value.ToString();
-                    residentid.Text = row.Cells["ResidentID"].Value.ToString();
-                    residentname.Text = row.Cells["ResidentName"].Value.ToString();
-                    roomnum.Text = row.Cells["RoomNumber"].Value.ToString();
+                    // Pre-populate all fields with null checking
+                    rentid.Text = row.Cells["RentID"].Value?.ToString() ?? string.Empty;
+
+                    if (DateTime.TryParse(row.Cells["StartDate"].Value?.ToString(), out DateTime startDt))
+                    {
+                        startdate.Value = startDt;
+                    }
+
+                    if (DateTime.TryParse(row.Cells["EndDate"].Value?.ToString(), out DateTime endDt))
+                    {
+                        enddate.Value = endDt;
+                    }
+
+                    rentamount.Text = row.Cells["RentAmount"].Value?.ToString() ?? string.Empty;
+                    roomid.Text = row.Cells["RoomID"].Value?.ToString() ?? string.Empty;
+                    residentid.Text = row.Cells["ResidentID"].Value?.ToString() ?? string.Empty;
+                    residentname.Text = row.Cells["ResidentName"].Value?.ToString() ?? string.Empty;
+                    roomnum.Text = row.Cells["RoomNumber"].Value?.ToString() ?? string.Empty;
 
                     // Select the entire row
                     dataGridView1.CurrentCell = dataGridView1.Rows[e.RowIndex].Cells[0];
@@ -450,37 +459,30 @@ namespace WinFormsApp1
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error selecting record: {ex.Message}");
+                MessageBox.Show($"Error selecting record: {ex.Message}", "Error",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
         private void searchbox_TextChanged(object sender, EventArgs e)
         {
             try
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"SELECT r.RentID, r.StartDate, r.EndDate, r.RentAmount, 
-                           r.ResidentID, r.RoomID, res.ResidentName, rm.RoomNumber
-                           FROM Rent r
-                           INNER JOIN Resident res ON r.ResidentID = res.ResidentID
-                           INNER JOIN Room rm ON r.RoomID = rm.RoomID
-                           WHERE res.ResidentName LIKE @SearchTerm + '%'";
-
-                    var command = new SqlCommand(query, connection);
-                    command.Parameters.AddWithValue("@SearchTerm", searchbox.Text);
-
-                    var adapter = new SqlDataAdapter(command);
-                    var dt = new DataTable();
-                    adapter.Fill(dt);
-
-                    dataGridView1.DataSource = dt;
-
-                    // Maintain column formatting
-                    if (dataGridView1.Columns.Count > 0)
+                    using (var command = new SqlCommand("sp_SearchRents", connection))
                     {
-                        FormatDataGridView();
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@SearchTerm", searchbox.Text.Trim());
+
+                        var adapter = new SqlDataAdapter(command);
+                        var dt = new DataTable();
+                        adapter.Fill(dt);
+                        dataGridView1.DataSource = dt;
+
+                        if (dataGridView1.Columns.Count > 0)
+                        {
+                            FormatDataGridView();
+                        }
                     }
                 }
             }
@@ -492,21 +494,6 @@ namespace WinFormsApp1
         }
         private void FormatDataGridView()
         {
-            dataGridView1.Columns["RentID"].Width = 70;
-            dataGridView1.Columns["StartDate"].Width = 100;
-            dataGridView1.Columns["EndDate"].Width = 100;
-            dataGridView1.Columns["RentAmount"].Width = 100;
-            dataGridView1.Columns["RoomID"].Width = 70;
-            dataGridView1.Columns["ResidentID"].Width = 80;
-            dataGridView1.Columns["ResidentName"].Width = 120;
-            dataGridView1.Columns["RoomNumber"].Width = 100;
-
-            // Format columns
-            dataGridView1.Columns["StartDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
-            dataGridView1.Columns["EndDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
-            dataGridView1.Columns["RentAmount"].DefaultCellStyle.Format = "C2";
-
-            // Set headers
             dataGridView1.Columns["RentID"].HeaderText = "Rent ID";
             dataGridView1.Columns["StartDate"].HeaderText = "Start Date";
             dataGridView1.Columns["EndDate"].HeaderText = "End Date";
@@ -515,23 +502,33 @@ namespace WinFormsApp1
             dataGridView1.Columns["ResidentID"].HeaderText = "Resident ID";
             dataGridView1.Columns["ResidentName"].HeaderText = "Resident Name";
             dataGridView1.Columns["RoomNumber"].HeaderText = "Room Number";
+
+            dataGridView1.Columns["StartDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
+            dataGridView1.Columns["EndDate"].DefaultCellStyle.Format = "yyyy-MM-dd";
+            dataGridView1.Columns["RentAmount"].DefaultCellStyle.Format = "C2";
+
+            foreach (DataGridViewColumn column in dataGridView1.Columns)
+            {
+                column.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+            }
+
+            dataGridView1.AlternatingRowsDefaultCellStyle.BackColor = Color.LightGray;
+            dataGridView1.EnableHeadersVisualStyles = false;
+            dataGridView1.ColumnHeadersDefaultCellStyle.BackColor = Color.LightBlue;
+            dataGridView1.ColumnHeadersDefaultCellStyle.Font = new Font(dataGridView1.Font, FontStyle.Bold);
         }
+
         private void delete_Click(object sender, EventArgs e)
         {
             try
             {
-                // Check if a row is selected
-                if (dataGridView1.CurrentRow == null || dataGridView1.SelectedRows.Count == 0)
+                if (string.IsNullOrEmpty(rentid.Text))
                 {
                     MessageBox.Show("Please select a record to delete.", "Validation Error",
                         MessageBoxButtons.OK, MessageBoxIcon.Warning);
                     return;
                 }
 
-                // Get RentID from selected row
-                int rentId = Convert.ToInt32(dataGridView1.CurrentRow.Cells["RentID"].Value);
-
-                // Show confirmation dialog
                 DialogResult result = MessageBox.Show(
                     "Are you sure you want to delete this rent record?",
                     "Confirm Delete",
@@ -542,31 +539,41 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-                        string query = "DELETE FROM Rent WHERE RentID = @RentID";
-                        var command = new SqlCommand(query, connection);
-                        command.Parameters.Add("@RentID", SqlDbType.Int).Value = rentId;
-
-                        int rowsAffected = command.ExecuteNonQuery();
-
-                        if (rowsAffected > 0)
+                        using (var command = new SqlCommand("sp_DeleteRent", connection))
                         {
-                            MessageBox.Show("Record deleted successfully!", "Success",
-                                MessageBoxButtons.OK, MessageBoxIcon.Information);
-                            LoadRentData(); // Refresh the grid
-                            ClearFields(); // Clear the form fields
-                        }
-                        else
-                        {
-                            MessageBox.Show("Record could not be deleted. It may have been removed already.",
-                                "Delete Failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@RentID", int.Parse(rentid.Text));
+
+                            try
+                            {
+                                connection.Open();
+                                command.ExecuteNonQuery();
+                                MessageBox.Show("Rent record deleted successfully!", "Success",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                                LoadRentData();
+                                ClearFields();
+                            }
+                            catch (SqlException ex)
+                            {
+                                switch (ex.Number)
+                                {
+                                    case 50006:
+                                        MessageBox.Show("Rent record not found.", "Error");
+                                        break;
+                                    case 50007:
+                                        MessageBox.Show("Cannot delete an active rent record.", "Error");
+                                        break;
+                                    default:
+                                        throw;
+                                }
+                            }
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error deleting record: {ex.Message}", "Error",
+                MessageBox.Show($"Error deleting rent record: {ex.Message}", "Error",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }

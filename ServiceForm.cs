@@ -37,12 +37,14 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = "SELECT ServiceID, ServiceName, ServiceDescription, Cost FROM Service";
-                    var adapter = new SqlDataAdapter(query, connection);
-                    var dt = new DataTable();
-                    adapter.Fill(dt);
-                    servicegrid.DataSource = dt;
+                    using (var command = new SqlCommand("sp_GetAllServices", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        var adapter = new SqlDataAdapter(command);
+                        var dt = new DataTable();
+                        adapter.Fill(dt);
+                        servicegrid.DataSource = dt;
+                    }
                 }
             }
             catch (Exception ex)
@@ -51,6 +53,7 @@ namespace WinFormsApp1
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
         private void Insert_Click(object sender, EventArgs e)
         {
@@ -72,21 +75,40 @@ namespace WinFormsApp1
 
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"INSERT INTO Service (ServiceName, ServiceDescription, Cost) 
-                               VALUES (@ServiceName, @ServiceDescription, @Cost)";
+                    using (var command = new SqlCommand("sp_InsertService", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@ServiceName", servicename.Text.Trim());
+                        command.Parameters.AddWithValue("@ServiceDescription", servicedescription.Text.Trim());
+                        command.Parameters.AddWithValue("@Cost", cost);
 
-                    var command = new SqlCommand(query, connection);
-                    command.Parameters.AddWithValue("@ServiceName", servicename.Text.Trim());
-                    command.Parameters.AddWithValue("@ServiceDescription", servicedescription.Text.Trim());
-                    command.Parameters.AddWithValue("@Cost", cost);
-
-                    command.ExecuteNonQuery();
-                    MessageBox.Show("Service added successfully!", "Success",
-                        MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                    ClearFields();
-                    LoadServices();
+                        try
+                        {
+                            connection.Open();
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Service added successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            ClearFields();
+                            LoadServices();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
+                            {
+                                case 50001:
+                                    MessageBox.Show("Service name cannot be empty.", "Error");
+                                    break;
+                                case 50002:
+                                    MessageBox.Show("Cost cannot be negative.", "Error");
+                                    break;
+                                case 50003:
+                                    MessageBox.Show("Service name already exists.", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -95,9 +117,6 @@ namespace WinFormsApp1
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
-
-
-
         private void Update_Click(object sender, EventArgs e)
         {
             try
@@ -118,31 +137,43 @@ namespace WinFormsApp1
 
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"UPDATE Service 
-                               SET ServiceName = @ServiceName,
-                                   ServiceDescription = @ServiceDescription,
-                                   Cost = @Cost
-                               WHERE ServiceID = @ServiceID";
-
-                    var command = new SqlCommand(query, connection);
-                    command.Parameters.AddWithValue("@ServiceID", int.Parse(serviceid.Text));
-                    command.Parameters.AddWithValue("@ServiceName", servicename.Text.Trim());
-                    command.Parameters.AddWithValue("@ServiceDescription", servicedescription.Text.Trim());
-                    command.Parameters.AddWithValue("@Cost", cost);
-
-                    int rowsAffected = command.ExecuteNonQuery();
-                    if (rowsAffected > 0)
+                    using (var command = new SqlCommand("sp_UpdateService", connection))
                     {
-                        MessageBox.Show("Service updated successfully!", "Success",
-                            MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        ClearFields();
-                        LoadServices();
-                    }
-                    else
-                    {
-                        MessageBox.Show("No service was updated. Please check the ServiceID.", "Warning",
-                            MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@ServiceID", int.Parse(serviceid.Text));
+                        command.Parameters.AddWithValue("@ServiceName", servicename.Text.Trim());
+                        command.Parameters.AddWithValue("@ServiceDescription", servicedescription.Text.Trim());
+                        command.Parameters.AddWithValue("@Cost", cost);
+
+                        try
+                        {
+                            connection.Open();
+                            command.ExecuteNonQuery();
+                            MessageBox.Show("Service updated successfully!", "Success",
+                                MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            ClearFields();
+                            LoadServices();
+                        }
+                        catch (SqlException ex)
+                        {
+                            switch (ex.Number)
+                            {
+                                case 50001:
+                                    MessageBox.Show("Service name cannot be empty.", "Error");
+                                    break;
+                                case 50002:
+                                    MessageBox.Show("Cost cannot be negative.", "Error");
+                                    break;
+                                case 50003:
+                                    MessageBox.Show("Service name already exists.", "Error");
+                                    break;
+                                case 50004:
+                                    MessageBox.Show("Service not found.", "Error");
+                                    break;
+                                default:
+                                    throw;
+                            }
+                        }
                     }
                 }
             }
@@ -152,6 +183,7 @@ namespace WinFormsApp1
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
+
 
         private void Clear_Click(object sender, EventArgs e)
         {
@@ -184,19 +216,15 @@ namespace WinFormsApp1
             {
                 using (var connection = DbHelper.GetConnection())
                 {
-                    connection.Open();
-                    string query = @"SELECT ServiceID, ServiceName, ServiceDescription, Cost 
-                               FROM Service 
-                               WHERE ServiceName LIKE @SearchTerm + '%'
-                               OR ServiceDescription LIKE @SearchTerm + '%'
-                               OR CAST(Cost AS NVARCHAR) LIKE @SearchTerm + '%'";
-
-                    var command = new SqlCommand(query, connection);
-                    command.Parameters.AddWithValue("@SearchTerm", searchbox.Text.Trim());
-                    var adapter = new SqlDataAdapter(command);
-                    var dt = new DataTable();
-                    adapter.Fill(dt);
-                    servicegrid.DataSource = dt;
+                    using (var command = new SqlCommand("sp_SearchServices", connection))
+                    {
+                        command.CommandType = CommandType.StoredProcedure;
+                        command.Parameters.AddWithValue("@SearchTerm", searchbox.Text.Trim());
+                        var adapter = new SqlDataAdapter(command);
+                        var dt = new DataTable();
+                        adapter.Fill(dt);
+                        servicegrid.DataSource = dt;
+                    }
                 }
             }
             catch (Exception ex)
@@ -212,7 +240,6 @@ namespace WinFormsApp1
         }
         private void Delete_Click(object sender, EventArgs e)
         {
-            // Check if a service is selected
             if (string.IsNullOrWhiteSpace(serviceid.Text))
             {
                 MessageBox.Show("Please select a service to delete.", "Validation Error",
@@ -222,7 +249,6 @@ namespace WinFormsApp1
 
             try
             {
-                // Show confirmation dialog
                 DialogResult result = MessageBox.Show(
                     "Are you sure you want to delete this service? This action cannot be undone.",
                     "Confirm Deletion",
@@ -233,41 +259,33 @@ namespace WinFormsApp1
                 {
                     using (var connection = DbHelper.GetConnection())
                     {
-                        connection.Open();
-
-                        // First check if the service is referenced in any requests
-                        string checkQuery = "SELECT COUNT(*) FROM Request WHERE ServiceID = @ServiceID";
-                        using (var checkCommand = new SqlCommand(checkQuery, connection))
+                        using (var command = new SqlCommand("sp_DeleteService", connection))
                         {
-                            checkCommand.Parameters.AddWithValue("@ServiceID", int.Parse(serviceid.Text));
-                            int referenceCount = (int)checkCommand.ExecuteScalar();
+                            command.CommandType = CommandType.StoredProcedure;
+                            command.Parameters.AddWithValue("@ServiceID", int.Parse(serviceid.Text));
 
-                            if (referenceCount > 0)
+                            try
                             {
-                                MessageBox.Show("This service cannot be deleted because it is referenced in one or more requests.",
-                                    "Delete Failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                                return;
-                            }
-                        }
-
-                        // If no references exist, proceed with deletion
-                        string deleteQuery = "DELETE FROM Service WHERE ServiceID = @ServiceID";
-                        using (var deleteCommand = new SqlCommand(deleteQuery, connection))
-                        {
-                            deleteCommand.Parameters.AddWithValue("@ServiceID", int.Parse(serviceid.Text));
-                            int rowsAffected = deleteCommand.ExecuteNonQuery();
-
-                            if (rowsAffected > 0)
-                            {
+                                connection.Open();
+                                command.ExecuteNonQuery();
                                 MessageBox.Show("Service deleted successfully!", "Success",
                                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                                 ClearFields();
-                                LoadServices(); // Refresh the grid
+                                LoadServices();
                             }
-                            else
+                            catch (SqlException ex)
                             {
-                                MessageBox.Show("No service was found to delete.", "Warning",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                switch (ex.Number)
+                                {
+                                    case 50004:
+                                        MessageBox.Show("Service not found.", "Error");
+                                        break;
+                                    case 50005:
+                                        MessageBox.Show("Cannot delete service because it is referenced in requests.", "Error");
+                                        break;
+                                    default:
+                                        throw;
+                                }
                             }
                         }
                     }
